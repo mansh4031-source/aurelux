@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Ansh AI — Tumhara Apna AI Model</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif; background: #0f0f12; color: #ececec; height: 100dvh; display: flex; flex-direction: column; }
+  header { padding: 14px 16px; background: #18181d; border-bottom: 1px solid #2a2a31; }
+  header h1 { font-size: 18px; color: #f5c542; letter-spacing: .3px; }
+  header p { font-size: 12px; color: #9a9aa5; margin-top: 3px; line-height: 1.5; }
+  #status { margin-top: 8px; font-size: 12px; color: #7fd4a8; }
+  #progressWrap { display: none; margin-top: 8px; }
+  #progressBarOuter { height: 8px; background: #2a2a31; border-radius: 99px; overflow: hidden; }
+  #progressBar { height: 100%; width: 0%; background: #f5c542; border-radius: 99px; transition: width .3s; }
+  #progressText { font-size: 11px; color: #9a9aa5; margin-top: 4px; }
+  #modelRow { display: flex; gap: 8px; margin-top: 10px; align-items: center; }
+  #modelRow label { font-size: 12px; color: #9a9aa5; }
+  #modelSelect { background: #26262c; color: #ececec; border: 1px solid #3a3a42; border-radius: 8px; padding: 6px 8px; font-size: 13px; }
+  #chat { flex: 1; overflow-y: auto; padding: 16px 14px; display: flex; flex-direction: column; gap: 12px; }
+  .msg { max-width: 88%; padding: 11px 13px; border-radius: 14px; font-size: 15px; line-height: 1.55; white-space: pre-wrap; word-wrap: break-word; }
+  .msg.user { align-self: flex-end; background: #f5c542; color: #1a1a1a; border-bottom-right-radius: 4px; }
+  .msg.ai { align-self: flex-start; background: #232329; border: 1px solid #2f2f37; border-bottom-left-radius: 4px; }
+  .msg.typing { color: #9a9aa5; font-style: italic; }
+  #chips { display: flex; gap: 8px; flex-wrap: wrap; padding: 0 14px 10px; }
+  .chip { background: #232329; border: 1px solid #3a3a42; color: #e8e8e8; border-radius: 99px; padding: 7px 12px; font-size: 13px; cursor: pointer; }
+  .chip:active { background: #33333b; }
+  #inputRow { display: flex; gap: 8px; padding: 10px 12px calc(12px + env(safe-area-inset-bottom)); background: #18181d; border-top: 1px solid #2a2a31; }
+  #input { flex: 1; background: #26262c; border: 1px solid #3a3a42; color: #ececec; border-radius: 12px; padding: 11px 12px; font-size: 15px; outline: none; }
+  #input:focus { border-color: #f5c542; }
+  #send { background: #f5c542; color: #1a1a1a; border: none; border-radius: 12px; padding: 0 18px; font-size: 15px; font-weight: 700; cursor: pointer; }
+  #send:disabled { opacity: .45; }
+  footer { text-align: center; font-size: 11px; color: #77777f; padding: 6px 10px 10px; background: #18181d; line-height: 1.5; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🤖 Ansh AI</h1>
+  <p>Tumhara apna AI model — free, private, phone mein hi chalta hai. Koi server nahi, koi paise nahi, tumhari baatein kahin nahi jaati.</p>
+  <div id="status">Model load ho raha hai…</div>
+  <div id="progressWrap">
+    <div id="progressBarOuter"><div id="progressBar"></div></div>
+    <div id="progressText">Pehli baar download ho raha hai — WiFi par rakho.</div>
+  </div>
+  <div id="modelRow">
+    <label for="modelSelect">Model:</label>
+    <select id="modelSelect">
+      <option value="Qwen2.5-0.5B-Instruct-q4f16_1-MLC">Qwen 0.5B — recommended (~400MB)</option>
+      <option value="SmolLM2-360M-Instruct-q4f16_1-MLC">SmolLM2 360M — halka, tez (~200MB)</option>
+    </select>
+  </div>
+</header>
+
+<div id="chat"></div>
+
+<div id="chips">
+  <button class="chip">Kaal Chakra kya hai?</button>
+  <button class="chip">Episode 6 Bhishma ki kahani batao</button>
+  <button class="chip">AURELUX ki services kya hain?</button>
+  <button class="chip">Mujhe ek accha Instagram caption likh do</button>
+</div>
+
+<div id="inputRow">
+  <input id="input" type="text" placeholder="Kuch bhi poochho…" autocomplete="off">
+  <button id="send" disabled>Bhejo</button>
+</div>
+<footer>Chhota free model hai — Claude jitna smart nahi. Jawab kabhi galat bhi ho sakte hain; bade ya zaroori sawaal Kavi se poochho.</footer>
+
+<script type="module">
+import * as webllm from "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.88/+esm";
+
+const SYSTEM_PROMPT = `You are Ansh AI, a friendly personal AI assistant for Ansh Mishra. Reply mostly in Roman Hindi (Hinglish), simple, warm and short. You know these facts: Kaal Chakra is Ansh's Instagram series (Mahabharat x Kalyug x Aaj) on @kaalchakra_xt — episodes: 1 Ashwatthama, 2 Parikshit aur Kali, 3 Takshak, 4 Vibhishana, 5 Karna, 6 Bhishma. AURELUX is his premium website business — Website Making Rs 14,999+, Designing Rs 9,999+, Redesign Rs 12,999+, Landing Page Rs 7,999+, Business Website Rs 24,999+, SEO Setup Rs 6,999. If you do not know something, say so plainly in Roman Hindi instead of guessing. Keep answers short — 2 to 5 lines unless the user asks for more.`;
+
+const chatEl = document.getElementById("chat");
+const inputEl = document.getElementById("input");
+const sendBtn = document.getElementById("send");
+const statusEl = document.getElementById("status");
+const progressWrap = document.getElementById("progressWrap");
+const progressBar = document.getElementById("progressBar");
+const progressText = document.getElementById("progressText");
+const modelSelect = document.getElementById("modelSelect");
+
+let engine = null;
+let busy = false;
+let history = [{ role: "system", content: SYSTEM_PROMPT }];
+
+function addMsg(text, who) {
+  const d = document.createElement("div");
+  d.className = "msg " + who;
+  d.textContent = text;
+  chatEl.appendChild(d);
+  chatEl.scrollTop = chatEl.scrollHeight;
+  return d;
+}
+
+function setStatus(t, ok) {
+  statusEl.textContent = t;
+  statusEl.style.color = ok === false ? "#e58a8a" : "#7fd4a8";
+}
+
+async function loadModel(modelId) {
+  sendBtn.disabled = true;
+  progressWrap.style.display = "block";
+  progressBar.style.width = "0%";
+  setStatus("Model download ho raha hai…");
+  try {
+    engine = await webllm.CreateMLCEngine(modelId, {
+      initProgressCallback: (p) => {
+        const pct = Math.round((p.progress || 0) * 100);
+        progressBar.style.width = pct + "%";
+        progressText.textContent = p.text || ("Download ho raha hai… " + pct + "%");
+      }
+    });
+    progressWrap.style.display = "none";
+    setStatus("✅ Model taiyaar hai — ab poochho!");
+    sendBtn.disabled = false;
+    return true;
+  } catch (e) {
+    progressWrap.style.display = "none";
+    setStatus("❌ Model load nahi hua: " + (e && e.message ? e.message : e), false);
+    addMsg("Model load nahi ho paya. Ho sakta hai tumhara phone browser WebGPU support na karta ho, ya network mein problem ho. Chrome browser mein dobara kholo, ya WiFi par try karo.", "ai");
+    return false;
+  }
+}
+
+async function ask(text) {
+  if (!engine || busy) return;
+  busy = true;
+  sendBtn.disabled = true;
+  addMsg(text, "user");
+  history.push({ role: "user", content: text });
+  const bubble = addMsg("Soch raha hoon…", "ai typing");
+  try {
+    const stream = await engine.chat.completions.create({ messages: history, stream: true, temperature: 0.7, max_tokens: 400 });
+    let out = "";
+    bubble.classList.remove("typing");
+    bubble.textContent = "";
+    for await (const chunk of stream) {
+      const delta = chunk.choices && chunk.choices[0] && chunk.choices[0].delta ? chunk.choices[0].delta.content : "";
+      if (delta) { out += delta; bubble.textContent = out; chatEl.scrollTop = chatEl.scrollHeight; }
+    }
+    if (!out.trim()) out = "Iska jawab nahi de paya — dobara thoda alag tareeke se poochho.";
+    bubble.textContent = out;
+    history.push({ role: "assistant", content: out });
+  } catch (e) {
+    bubble.classList.remove("typing");
+    bubble.textContent = "Kuch gadbad ho gayi: " + (e && e.message ? e.message : e) + " Dobara try karo.";
+  }
+  busy = false;
+  sendBtn.disabled = false;
+  inputEl.focus();
+}
+
+sendBtn.addEventListener("click", () => {
+  const t = inputEl.value.trim();
+  if (!t) return;
+  inputEl.value = "";
+  ask(t);
+});
+inputEl.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") sendBtn.click();
+});
+document.querySelectorAll(".chip").forEach(c => {
+  c.addEventListener("click", () => { inputEl.value = c.textContent; sendBtn.click(); });
+});
+modelSelect.addEventListener("change", async () => {
+  history = [{ role: "system", content: SYSTEM_PROMPT }];
+  chatEl.innerHTML = "";
+  addMsg("Model badla ja raha hai — " + modelSelect.options[modelSelect.selectedIndex].text, "ai");
+  await loadModel(modelSelect.value);
+});
+
+addMsg("Namaste bhai! Main Ansh AI hoon — tumhara apna model. Pehli baar khulne par model download hoga (~400MB), isliye WiFi par rakho. Uske baad main bina internet ke bhi chalunga. Kuch bhi poochho!", "ai");
+loadModel(modelSelect.value);
+</script>
+</body>
+</html>
